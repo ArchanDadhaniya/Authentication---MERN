@@ -12,6 +12,6 @@ export const login = async (req, res) => {
     res.send('login success');
 }
 
-export const logout= async (req, res) => {
+export const logout = async (req, res) => {
     res.send('logout success');
 }
