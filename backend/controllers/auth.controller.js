@@ -1,7 +1,11 @@
-import { User } from "../models/user.model.js";
+
 import bcryptjs from "bcryptjs";
+import crypto from "crypto";
+
+
+import { User } from "../models/user.model.js";
 import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js";
-import {sendVerificationEmail, sendWelcomeEmail} from "../mailtrap/emails.js";
+import {sendPasswordResetEmail, sendVerificationEmail, sendWelcomeEmail} from "../mailtrap/emails.js";
 
 export const signup = async (req, res) => {
   const { email, password, name } = req.body;
@@ -53,9 +57,6 @@ export const signup = async (req, res) => {
   }
 };
 
-
-
-
 export const verifyEmail = async (req, res) => {
   const { code } = req.body;
   try {
@@ -65,7 +66,10 @@ export const verifyEmail = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({ success: false, message: "Invalid or expired verification code" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification code",
+      });
     }
 
     user.isVerified = true;
@@ -89,26 +93,23 @@ export const verifyEmail = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
 export const login = async (req, res) => {
   const { email, password } = req.body;
-  try{
-    const user = await User.findOne({email});
-    if(!user){
-      return res.status(400).json({ success: false, message: "Invalid Credentials" });
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid Credentials" });
     }
-    const isPasswordValid = await bcryptjs.compare(password,user.password);
-    if(!isPasswordValid){
-      return res.status(400).json({ success: false, message: "Invalid Credentials" });
+    const isPasswordValid = await bcryptjs.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid Credentials" });
     }
 
-    generateTokenAndSetCookie(res,user._id);
+    generateTokenAndSetCookie(res, user._id);
 
     user.lastlogin = new Date();
     await user.save();
@@ -119,17 +120,53 @@ export const login = async (req, res) => {
       user: {
         ...user._doc,
         password: undefined,
-      }
-    })
-
-  }catch(error){
+      },
+    });
+  } catch (error) {
     console.log("error in login ", error);
     res.status(400).json({ success: false, message: error.message });
-
   }
 };
 
 export const logout = async (req, res) => {
   res.clearCookie("token");
-  res.status(200).json({success: true, message: "User logged out" });
+  res.status(200).json({ success: true, message: "User logged out" });
+};
+
+
+
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User not found" });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(20).toString("hex");
+    const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hour
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpiresAt = resetTokenExpiresAt;
+
+    await user.save();
+
+    // send email
+    await sendPasswordResetEmail(
+      user.email,
+      `${process.env.CLIENT_URL}/reset-password/${resetToken}`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset link sent to your email",
+    });
+  } catch (error) {
+    console.log("Error in forgotPassword ", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
 };
